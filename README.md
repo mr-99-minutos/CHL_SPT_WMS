@@ -1,1 +1,0 @@
-# CHL_SPT_WMS
