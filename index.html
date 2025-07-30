@@ -131,12 +131,12 @@
             map.on('click', 'geojson-layer', (e) => {
                 const properties = e.features[0].properties;
 
-                // Mostrar solo las propiedades 'name', 'commune' y 'station'
+                // Mostrar solo las propiedades 'name', 'service', 'commune' y 'station'
                 const content = `
                     <strong>zonificacion:</strong> ${properties.zonificacion}<br>
                     <strong>service:</strong> ${properties.service}<br>
                     <strong>capacity:</strong> ${properties.capacity}<br>
-                    <strong>service:</strong> ${properties.station}
+                    <strong>station:</strong> ${properties.station}
                 `;
 
                 new mapboxgl.Popup()
