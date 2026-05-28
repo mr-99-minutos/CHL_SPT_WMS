@@ -77,12 +77,11 @@
     #right-panel .cell.highlighted { border-color: #222 !important; }
 
     /* G section */
-    .g-section-wrap { flex: 1; padding: 2px; }
-    .g-group { margin-bottom: 2px; }
-    .g-group-label { font-size: 9px; color: #888; font-weight: 700; padding: 1px 2px; letter-spacing: .4px; text-transform: uppercase; }
-    #right-panel .g-group-label { color: #666; }
-    .g-row { display: flex; gap: 2px; margin-bottom: 2px; }
-    .g-row .cell { height: 24px; font-size: 10px; min-width: 0; flex: 1; }
+    .g-section-wrap { flex: 1; padding: 2px; display: flex; flex-direction: column; gap: 2px; }
+    .g-row { display: flex; gap: 2px; }
+    .g-row .cell { height: 34px; font-size: 12px; min-width: 0; flex: 1; }
+    .g-spacer { flex: 1; }
+    .tt-members { margin-top: 6px; font-size: 10px; color: #bbb; line-height: 1.6; max-width: 260px; word-break: break-all; }
 
     /* Conveyor */
     #conveyor { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-around; background: #161622; padding: 8px 0; }
@@ -201,15 +200,15 @@ const RIGHT = [
   {f:'B', rows:[[71,72,73,74,75],[80,79,78,77,76]]},
   {f:'A', rows:[[61,62,63,64,65],[70,69,68,67,66]]},
 ];
-const G_GROUPS = [
-  {label:'PRINCIPAL', noms:[900,121,122,123]},
-  {label:'200s', noms:[]},
-  {label:'300s', noms:[301]},
-  {label:'400s', noms:[]},
-  {label:'500s', noms:[]},
-  {label:'600s', noms:[]},
+// G layout: series ranges displayed as single cells, arranged in snake pattern
+// null = empty spacer cell to keep 3-column alignment
+const G_SERIES_LAYOUT = [
+  [200, 300, 400],
+  [700, 600, 500],
+  [900, null, null],
 ];
-const G_PER_ROW = 8;
+const G_INDIV = [121, 122, 123]; // individual positions shown as normal cells
+let seriesMap = {}; // series number → [nomenclatura strings]
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let FM = {}; // nomenclatura → properties
@@ -282,24 +281,69 @@ function mkFinger(fd, isLeft) {
   g.appendChild(grid); return g;
 }
 
+// ── Series cell (200, 300, …, 900) ───────────────────────────────────────────
+function mkSeriesCell(series) {
+  const members = seriesMap[series] || [];
+  const d = document.createElement('div');
+  d.className = 'cell';
+  d.textContent = String(series);
+
+  // Color by dominant provider in this series
+  const provCounts = {};
+  members.forEach(nom => {
+    const pv = FM[nom]?.proveedor; if (pv) provCounts[pv] = (provCounts[pv]||0)+1;
+  });
+  const dominant = Object.entries(provCounts).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const c = dominant ? pColor(dominant) : '#888';
+  d.style.background = c;
+  d.style.color = isLight(c)?'#111':'#fff';
+
+  d.addEventListener('mouseenter', e => showSeriesTip(e, series, members));
+  d.addEventListener('mousemove',  e => moveTip(e));
+  d.addEventListener('mouseleave', hideTip);
+  d.addEventListener('click', () => {
+    // Highlight all members on map
+    document.querySelectorAll('.cell.highlighted').forEach(c=>c.classList.remove('highlighted'));
+    d.classList.add('highlighted');
+    showTab('map');
+    if (mapGL && members.length) highlightSeries(members);
+  });
+  return d;
+}
+
+function showSeriesTip(e, series, members) {
+  const provSet = [...new Set(members.map(nom=>FM[nom]?.proveedor).filter(Boolean))];
+  const listed = members.slice(0,60).join(' · ') + (members.length>60 ? ' …' : '');
+  ttEl.innerHTML = `
+    <div class="tt-nom">Serie ${series}s</div>
+    <div class="tt-row"><span class="tt-lbl">Posiciones</span><strong>${members.length}</strong></div>
+    <div class="tt-row"><span class="tt-lbl">Proveedores</span><strong>${provSet.join(', ')}</strong></div>
+    <div class="tt-members">${listed}</div>`;
+  ttEl.style.display = 'block'; moveTip(e);
+}
+
 // ── G section ─────────────────────────────────────────────────────────────────
 function mkG() {
   const g = document.createElement('div'); g.className = 'finger-group'; g.style.alignItems='flex-start';
   const lbl = document.createElement('div'); lbl.className = 'finger-label'; lbl.textContent = 'G';
   g.appendChild(lbl);
   const wrap = document.createElement('div'); wrap.className = 'g-section-wrap';
-  G_GROUPS.forEach(sg => {
-    if (!sg.noms.length) return;
-    const div = document.createElement('div'); div.className = 'g-group';
-    const l = document.createElement('div'); l.className = 'g-group-label'; l.textContent = sg.label;
-    div.appendChild(l);
-    for (let i=0; i<sg.noms.length; i+=G_PER_ROW) {
-      const row = document.createElement('div'); row.className = 'g-row';
-      sg.noms.slice(i,i+G_PER_ROW).forEach(n => row.appendChild(mkCell(String(n).padStart(3,'0'), false)));
-      div.appendChild(row);
-    }
-    wrap.appendChild(div);
+
+  // Series rows (snake pattern)
+  G_SERIES_LAYOUT.forEach(row => {
+    const r = document.createElement('div'); r.className = 'g-row';
+    row.forEach(s => {
+      if (s === null) { const sp=document.createElement('div'); sp.className='g-spacer'; r.appendChild(sp); }
+      else r.appendChild(mkSeriesCell(s));
+    });
+    wrap.appendChild(r);
   });
+
+  // Individual cells row (121, 122, 123)
+  const ir = document.createElement('div'); ir.className = 'g-row';
+  G_INDIV.forEach(n => ir.appendChild(mkCell(String(n).padStart(3,'0'), false)));
+  wrap.appendChild(ir);
+
   g.appendChild(wrap); return g;
 }
 
@@ -369,20 +413,31 @@ function buildControls() {
   });
 }
 
-function populateG() {
-  allFeats.filter(f=>f.properties.finger==='G').forEach(f => {
-    const n = parseInt(f.properties.nomenclatura);
-    if ([900,121,122,123].includes(n)) return;
-    const g = G_GROUPS.find(g=>{
-      if(g.label==='200s') return n>=200&&n<=299;
-      if(g.label==='300s') return n>=300&&n<=399;
-      if(g.label==='400s') return n>=400&&n<=499;
-      if(g.label==='500s') return n>=500&&n<=599;
-      if(g.label==='600s') return n>=600&&n<=699;
-    });
-    if (g && !g.noms.includes(n)) g.noms.push(n);
+function buildSeriesMap() {
+  // Map each series base (200,300,…,900) to its member nomenclaturas
+  [200,300,400,500,600,700,900].forEach(base => {
+    seriesMap[base] = allFeats
+      .filter(f => { const n=parseInt(f.properties.nomenclatura); return n>=base && n<base+100; })
+      .map(f => f.properties.nomenclatura)
+      .sort();
   });
-  G_GROUPS.forEach(g=>g.noms.sort((a,b)=>a-b));
+}
+
+function highlightSeries(members) {
+  mapGL.setFilter('spt-hl',    ['in','nomenclatura',...members]);
+  mapGL.setFilter('spt-hl-line',['in','nomenclatura',...members]);
+  setTimeout(()=>{
+    mapGL.setFilter('spt-hl',    ['==','nomenclatura','__none__']);
+    mapGL.setFilter('spt-hl-line',['==','nomenclatura','__none__']);
+  }, 3000);
+  // Fly to bounding box of all members
+  const coords=[];
+  allFeats.filter(f=>members.includes(f.properties.nomenclatura)).forEach(f=>{
+    const col=c=>{if(typeof c[0]==='number')coords.push(c);else c.forEach(col);}; col(f.geometry.coordinates);
+  });
+  if (!coords.length) return;
+  const lons=coords.map(c=>c[0]), lats=coords.map(c=>c[1]);
+  mapGL.fitBounds([[Math.min(...lons),Math.min(...lats)],[Math.max(...lons),Math.max(...lats)]],{padding:50,maxZoom:10});
 }
 
 // ── Map ───────────────────────────────────────────────────────────────────────
@@ -434,7 +489,7 @@ fetch(GEOJSON).then(r=>r.json()).then(data=>{
   document.getElementById('sorter-title').textContent = `Sorter Loop — ${station}`;
   document.getElementById('sorter-meta').textContent  = `${GEOJSON.split('/').pop()} · ${allFeats.length} posiciones`;
   document.getElementById('total-badge').textContent  = `${allFeats.length} total`;
-  populateG(); buildControls(); render();
+  buildSeriesMap(); buildControls(); render();
 });
 </script>
 </body>
