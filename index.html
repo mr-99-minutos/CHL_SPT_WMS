@@ -454,11 +454,21 @@ function initMap() {
     mapGL.addLayer({id:'spt-hl-line',type:'line',source:'spt',paint:{'line-color':'#ff4400','line-width':4,'line-opacity':1},filter:['==','nomenclatura','__none__']});
     mapGL.on('click','spt-fill', e => {
       const p=e.features[0].properties; const c=pColor(p.proveedor);
-      new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(
-        `<strong style="color:${c};font-size:14px">${p.zonificacion}</strong><br>
-         <b>Finger:</b> ${p.finger} &nbsp; <b>Fondo:</b> ${p.color_etiqueta===1||p.color_etiqueta==='1'?'Negro':'Blanco'}<br>
-         <b>Proveedor:</b> ${p.proveedor}<br><b>Estación:</b> ${p.station}<br><b>Capacidad:</b> ${p.capacity}`
-      ).addTo(mapGL);
+      const fondo = (p.color_etiqueta===1||p.color_etiqueta==='1') ? 'Negro' : 'Blanco';
+      const pols  = p.poligonos ? p.poligonos.split(';').join(', ') : '—';
+      const com   = p.COMUNA    ? p.COMUNA.split(';').join(', ')    : '—';
+      const reg   = p.REGION    ? p.REGION.split(';').join(', ')    : '—';
+      new mapboxgl.Popup({maxWidth:'320px'}).setLngLat(e.lngLat).setHTML(`
+        <strong style="color:${c};font-size:14px">${p.zonificacion}</strong><br>
+        <b>Finger:</b> ${p.finger} &nbsp; <b>Fondo:</b> ${fondo}<br>
+        <b>Proveedor:</b> ${p.proveedor}<br>
+        <b>Estación:</b> ${p.station}<br>
+        <b>Capacidad:</b> ${p.capacity}<br>
+        <hr style="border:none;border-top:1px solid #ddd;margin:6px 0">
+        <b>Polígonos:</b> <span style="font-size:11px;color:#444">${pols}</span><br>
+        <b>Comuna(s):</b> <span style="font-size:11px;color:#444">${com}</span><br>
+        <b>Región:</b> <span style="font-size:11px;color:#444">${reg}</span>
+      `).addTo(mapGL);
     });
     mapGL.on('mouseenter','spt-fill',()=>mapGL.getCanvas().style.cursor='pointer');
     mapGL.on('mouseleave','spt-fill',()=>mapGL.getCanvas().style.cursor='');
