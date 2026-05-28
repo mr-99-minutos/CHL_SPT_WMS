@@ -92,6 +92,11 @@
     .conv-sep { width: 28px; height: 28px; background: #222; border-radius: 50%; border: 2px solid #333; margin: 4px 0; flex-shrink: 0; }
     .conv-label { font-size: 8px; color: #444; writing-mode: vertical-rl; letter-spacing: 1px; text-transform: uppercase; }
 
+    /* Mapbox popup override */
+    .mapboxgl-popup-content { color: #111 !important; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; padding: 14px 16px; border-radius: 8px; box-shadow: 0 4px 18px rgba(0,0,0,.25); }
+    .mapboxgl-popup-content strong { color: #111 !important; }
+    .mapboxgl-popup-close-button { color: #444 !important; font-size: 18px; }
+
     /* Tooltip */
     #tt { position: fixed; background: #1e1e2e; color: #eee; padding: 8px 12px; border-radius: 7px; font-size: 11px; pointer-events: none; display: none; z-index: 999; border: 1px solid #444; box-shadow: 0 4px 18px rgba(0,0,0,.6); min-width: 160px; }
     .tt-nom { font-size: 16px; font-weight: 800; margin-bottom: 5px; }
@@ -390,7 +395,8 @@ function initMap() {
     const cExpr = ['match',['get','proveedor'],...Object.entries(PC).flat(),'#888'];
     mapGL.addLayer({id:'spt-fill',type:'fill',source:'spt',paint:{'fill-color':cExpr,'fill-opacity':0.45}});
     mapGL.addLayer({id:'spt-line',type:'line',source:'spt',paint:{'line-color':'#000','line-width':0.4}});
-    mapGL.addLayer({id:'spt-hl',type:'fill',source:'spt',paint:{'fill-color':'#fff','fill-opacity':0.7},filter:['==','nomenclatura','__none__']});
+    mapGL.addLayer({id:'spt-hl',type:'fill',source:'spt',paint:{'fill-color':'#ff4400','fill-opacity':0.85},filter:['==','nomenclatura','__none__']});
+    mapGL.addLayer({id:'spt-hl-line',type:'line',source:'spt',paint:{'line-color':'#ff4400','line-width':4,'line-opacity':1},filter:['==','nomenclatura','__none__']});
     mapGL.on('click','spt-fill', e => {
       const p=e.features[0].properties; const c=pColor(p.proveedor);
       new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(
@@ -412,7 +418,11 @@ function flyTo(nom) {
     const lons=coords.map(c=>c[0]), lats=coords.map(c=>c[1]);
     mapGL.fitBounds([[Math.min(...lons),Math.min(...lats)],[Math.max(...lons),Math.max(...lats)]],{padding:60,maxZoom:12});
     mapGL.setFilter('spt-hl',['==','nomenclatura',nom]);
-    setTimeout(()=>mapGL.setFilter('spt-hl',['==','nomenclatura','__none__']),2500);
+    mapGL.setFilter('spt-hl-line',['==','nomenclatura',nom]);
+    setTimeout(()=>{
+      mapGL.setFilter('spt-hl',['==','nomenclatura','__none__']);
+      mapGL.setFilter('spt-hl-line',['==','nomenclatura','__none__']);
+    },3000);
   });
 }
 
