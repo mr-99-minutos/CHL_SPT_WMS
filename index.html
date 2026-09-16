@@ -102,6 +102,17 @@
     .tt-row { display: flex; justify-content: space-between; gap: 10px; margin-top: 2px; }
     .tt-lbl { color: #777; }
 
+    /* ── Resumen por proveedor ── */
+    .prov-summary { background: #1e1e2e; color: #eee; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.4); padding: 8px 10px; font-size: 11px; max-width: 230px; max-height: 300px; overflow-y: auto; }
+    .prov-summary h4 { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #999; margin-bottom: 6px; font-weight: 600; white-space: nowrap; }
+    .prov-summary table { border-collapse: collapse; width: 100%; }
+    .prov-summary td { padding: 3px 4px; vertical-align: top; border-bottom: 1px solid #333; }
+    .prov-summary tr:last-child td { border-bottom: none; }
+    .ps-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
+    .ps-prov { display: flex; align-items: center; font-weight: 600; white-space: nowrap; }
+    .ps-range { color: #bbb; font-size: 10px; display: block; }
+    .ps-count { color: #666; font-size: 9px; }
+
     /* ── Address Geocoder ── */
     .nominatim-geocoder { position: relative; z-index: 10; margin: 10px; }
     .geocoder-wrap { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.25); padding: 8px 12px; min-width: 265px; }
@@ -229,6 +240,8 @@ let seriesMap = {}; // series number → [nomenclatura strings]
 let FM = {}; // nomenclatura → properties
 let allFeats = [];
 let mapGL = null;
+let provSummaryCtrl = null;
+function refreshProviderSummary(){ if (provSummaryCtrl && allFeats.length) provSummaryCtrl.update(allFeats); }
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
 function showTab(id) {
@@ -543,11 +556,52 @@ class NominatimGeocoder {
   }
 }
 
+// ── Resumen por proveedor (control top-right, debajo del zoom) ───────────────
+class ProviderSummaryControl {
+  onAdd(map) {
+    this._map = map;
+    const c = document.createElement('div');
+    c.className = 'prov-summary mapboxgl-ctrl';
+    c.innerHTML = '<h4>Cargando…</h4>';
+    this._c = c;
+    return c;
+  }
+  onRemove(){ this._c.parentNode.removeChild(this._c); }
+  update(feats) {
+    if (!this._c) return;
+    const byProv = {};
+    feats.forEach(f => {
+      const p = f.properties.proveedor || 'Sin proveedor';
+      const n = parseInt(f.properties.nomenclatura, 10);
+      if (Number.isNaN(n)) return;
+      (byProv[p] = byProv[p] || []).push(n);
+    });
+    const provs = Object.keys(byProv).sort((a,b)=>Math.min(...byProv[a])-Math.min(...byProv[b]));
+    const rows = provs.map(p => {
+      const nums = [...new Set(byProv[p])].sort((a,b)=>a-b);
+      const ranges = [];
+      let start = nums[0], prev = nums[0];
+      for (let i=1;i<nums.length;i++){
+        if (nums[i] === prev+1) { prev = nums[i]; continue; }
+        ranges.push([start,prev]); start = nums[i]; prev = nums[i];
+      }
+      ranges.push([start,prev]);
+      const rangeTxt = ranges.map(([a,b]) => a===b ? `${a}` : `${a}–${b}`).join(', ');
+      return `<tr><td><span class="ps-prov"><span class="ps-dot" style="background:${pColor(p)}"></span>${p}</span></td>
+        <td><span class="ps-range">${rangeTxt}</span><span class="ps-count">(${nums.length})</span></td></tr>`;
+    }).join('');
+    this._c.innerHTML = `<h4>Proveedores · ${feats.length} polígonos</h4><table>${rows}</table>`;
+  }
+}
+
 // ── Map ───────────────────────────────────────────────────────────────────────
 function initMap() {
   mapboxgl.accessToken = MAPBOX_TOKEN;
   mapGL = new mapboxgl.Map({ container:'map', style:'mapbox://styles/mapbox/streets-v11', center:[-71.543,-35.675], zoom:4.5 });
   mapGL.addControl(new mapboxgl.NavigationControl());
+  provSummaryCtrl = new ProviderSummaryControl();
+  mapGL.addControl(provSummaryCtrl, 'top-right');
+  refreshProviderSummary();
   mapGL.addControl(new NominatimGeocoder({placeholder:'Buscar dirección en Chile...'}), 'top-left');
   mapGL.on('load', () => {
     mapGL.addSource('spt', {type:'geojson', data:GEOJSON});
@@ -604,6 +658,7 @@ fetch(GEOJSON).then(r=>r.json()).then(data=>{
   document.getElementById('sorter-meta').textContent  = `${GEOJSON.split('/').pop()} · ${allFeats.length} posiciones`;
   document.getElementById('total-badge').textContent  = `${allFeats.length} total`;
   buildSeriesMap(); buildControls(); render();
+  refreshProviderSummary();
 });
 </script>
 </body>
