@@ -108,6 +108,11 @@
     .prov-summary table { border-collapse: collapse; width: 100%; }
     .prov-summary td { padding: 3px 4px; vertical-align: top; border-bottom: 1px solid #333; }
     .prov-summary tr:last-child td { border-bottom: none; }
+    .prov-summary tr[data-prov] { cursor: pointer; }
+    .prov-summary tr[data-prov]:hover td { background: rgba(255,255,255,.07); }
+    .prov-summary tr.ps-active td { background: rgba(255,255,255,.14); }
+    .prov-summary tr.ps-active .ps-prov { color: #fff; }
+    .prov-summary tr.ps-active .ps-dot { box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
     .ps-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
     .ps-prov { display: flex; align-items: center; font-weight: 600; white-space: nowrap; }
     .ps-range { color: #bbb; font-size: 10px; display: block; }
@@ -558,6 +563,7 @@ class NominatimGeocoder {
 
 // ── Resumen por proveedor (control top-right, debajo del zoom) ───────────────
 class ProviderSummaryControl {
+  constructor() { this._selected = new Set(); }
   onAdd(map) {
     this._map = map;
     const c = document.createElement('div');
@@ -587,10 +593,27 @@ class ProviderSummaryControl {
       }
       ranges.push([start,prev]);
       const rangeTxt = ranges.map(([a,b]) => a===b ? `${a}` : `${a}–${b}`).join(', ');
-      return `<tr><td><span class="ps-prov"><span class="ps-dot" style="background:${pColor(p)}"></span>${p}</span></td>
+      const active = this._selected.has(p) ? ' ps-active' : '';
+      return `<tr class="ps-row${active}" data-prov="${p}"><td><span class="ps-prov"><span class="ps-dot" style="background:${pColor(p)}"></span>${p}</span></td>
         <td><span class="ps-range">${rangeTxt}</span><span class="ps-count">(${nums.length})</span></td></tr>`;
     }).join('');
     this._c.innerHTML = `<h4>Proveedores · ${feats.length} polígonos</h4><table>${rows}</table>`;
+    this._c.querySelectorAll('tr[data-prov]').forEach(tr => {
+      tr.addEventListener('click', () => this._toggle(tr.dataset.prov, tr));
+    });
+    this._applyFilter();
+  }
+  _toggle(prov, tr) {
+    if (this._selected.has(prov)) { this._selected.delete(prov); tr.classList.remove('ps-active'); }
+    else { this._selected.add(prov); tr.classList.add('ps-active'); }
+    this._applyFilter();
+  }
+  _applyFilter() {
+    if (!this._map || !this._map.getLayer('spt-prov-hl')) return;
+    const list = [...this._selected];
+    const filter = ['in', ['get','proveedor'], ['literal', list]];
+    this._map.setFilter('spt-prov-hl', filter);
+    this._map.setFilter('spt-prov-hl-line', filter);
   }
 }
 
@@ -610,6 +633,10 @@ function initMap() {
     mapGL.addLayer({id:'spt-line',type:'line',source:'spt',paint:{'line-color':'#000','line-width':0.4}});
     mapGL.addLayer({id:'spt-hl',type:'fill',source:'spt',paint:{'fill-color':'#ff4400','fill-opacity':0.85},filter:['==','nomenclatura','__none__']});
     mapGL.addLayer({id:'spt-hl-line',type:'line',source:'spt',paint:{'line-color':'#ff4400','line-width':4,'line-opacity':1},filter:['==','nomenclatura','__none__']});
+    // Resaltado persistente por proveedor (click en el recuadro-resumen)
+    mapGL.addLayer({id:'spt-prov-hl',type:'fill',source:'spt',paint:{'fill-color':'#ffffff','fill-opacity':0.35},filter:['in',['get','proveedor'],['literal',[]]]});
+    mapGL.addLayer({id:'spt-prov-hl-line',type:'line',source:'spt',paint:{'line-color':'#ffffff','line-width':3,'line-opacity':1},filter:['in',['get','proveedor'],['literal',[]]]});
+    if (provSummaryCtrl) provSummaryCtrl._applyFilter();
     mapGL.on('click','spt-fill', e => {
       const p=e.features[0].properties; const c=pColor(p.proveedor);
       const fondo = (p.color_etiqueta===1||p.color_etiqueta==='1') ? 'Negro' : 'Blanco';
