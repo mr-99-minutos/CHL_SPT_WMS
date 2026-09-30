@@ -220,34 +220,53 @@ const pColor = p => PC[p] || '#888';
 function minMax(arr){ let mn=Infinity, mx=-Infinity; for(let i=0;i<arr.length;i++){ if(arr[i]<mn)mn=arr[i]; if(arr[i]>mx)mx=arr[i]; } return [mn,mx]; }
 const isLight = h => { const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16); return(r*299+g*587+b*114)/1000>150; };
 
-// ── Layout definition ─────────────────────────────────────────────────────────
-const LEFT = [
-  {f:'H', rows:[[1,2,3,4,5],[10,9,8,7,6]]},
-  {f:'I', rows:[[11,12,13,14,15],[20,19,18,17,16]]},
-  {f:'J', rows:[[21,22,23,24,25],[26,27,28,29,30]]},
-  {f:'K', rows:[[31,32,33,34,35],[40,39,38,37,36]]},
-  {f:'L', rows:[[41,42,43,44,45],[50,49,48,47,46]]},
-  {f:'M', rows:[[51,52,53,54,55],[60,59,58,57,56]]},
-  {f:'N', rows:[[131,132,133,134,135],[140,139,138,137,136]]},
-  {f:'O', rows:[[141,142,143,144,145],[150,149,148,147,146]]},
-];
-const RIGHT = [
-  {f:'F', rows:[[111,112,113,114,115],[120,119,118,117,116]]},
-  {f:'E', rows:[[101,102,103,104,105],[110,109,108,107,106]]},
-  {f:'D', rows:[[91,92,93,94,95],[100,99,98,97,96]]},
-  {f:'C', rows:[[81,82,83,84,85],[90,89,88,87,86]]},
-  {f:'B', rows:[[71,72,73,74,75],[80,79,78,77,76]]},
-  {f:'A', rows:[[61,62,63,64,65],[70,69,68,67,66]]},
-];
-// G layout: series ranges displayed as single cells, arranged in snake pattern
-// null = empty spacer cell to keep 3-column alignment
-const G_SERIES_LAYOUT = [
-  [200, 300, 400],
-  [700, 600, 500],
-  [900, null, null],
-];
-const G_INDIV = [121, 122, 123]; // individual positions shown as normal cells
+// ── Layout (se arma desde el geojson, no está fijo) ───────────────────────────
+// Cada posición va al finger de su propiedad `finger`; el lado sale de `color_etiqueta`
+// (1 = fondo negro → izquierda, 0 = fondo blanco → derecha). Dentro de cada finger se ordena por
+// nomenclatura en zigzag de POR_FILA. En G, las posiciones desde 200 se agrupan por centena
+// (serie 200, 300, …) y las menores a 200 se muestran como celda propia.
+const POR_FILA = 5;
+const FINGERS_SIN_ZIGZAG = ['J']; // J va 21-25 / 26-30, igual que en el layout fijo anterior
+let LEFT = [], RIGHT = [];
+let G_SERIES_LAYOUT = []; // filas de 3 en zigzag; null = espacio vacío
+let G_INDIV = [];
 let seriesMap = {}; // series number → [nomenclatura strings]
+const numNom = p => parseInt(p.nomenclatura, 10);
+const esSerie = p => p.finger === 'G' && numNom(p) >= 200;
+
+function enFilas(nums, porFila, zigzag) {
+  const rows = [];
+  for (let i = 0; i < nums.length; i += porFila) {
+    const r = nums.slice(i, i + porFila);
+    rows.push(zigzag && rows.length % 2 === 1 ? r.reverse() : r);
+  }
+  return rows;
+}
+
+function buildLayout() {
+  const porFinger = {};
+  allFeats.forEach(f => {
+    const p = f.properties;
+    if (!p.finger || esSerie(p)) return;
+    if (p.finger === 'G') { G_INDIV.push(numNom(p)); return; }
+    const d = porFinger[p.finger] = porFinger[p.finger] || { nums: [], negros: 0 };
+    d.nums.push(numNom(p));
+    if (p.color_etiqueta === 1 || p.color_etiqueta === '1') d.negros++;
+  });
+  G_INDIV.sort((a, b) => a - b);
+  Object.keys(porFinger).sort().forEach(f => {
+    const d = porFinger[f];
+    d.nums.sort((a, b) => a - b);
+    const fd = { f, rows: enFilas(d.nums, POR_FILA, FINGERS_SIN_ZIGZAG.indexOf(f) === -1) };
+    (d.negros > d.nums.length / 2 ? LEFT : RIGHT).push(fd);
+  });
+  RIGHT.reverse(); // derecha: F arriba … A abajo (izquierda: H arriba … O abajo)
+  const bases = Object.keys(seriesMap).map(Number).sort((a, b) => a - b);
+  G_SERIES_LAYOUT = enFilas(bases, 3, false).map((r, i) => {
+    while (r.length < 3) r.push(null);
+    return i % 2 === 1 ? r.reverse() : r;
+  });
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let FM = {}; // nomenclatura → properties
@@ -317,6 +336,8 @@ function mkFinger(fd, isLeft) {
   fd.rows.forEach(row => {
     const r = document.createElement('div'); r.className = 'finger-row';
     row.forEach(n => r.appendChild(mkCell(String(n).padStart(3,'0'), isLeft)));
+    // Fila incompleta: se rellena para que las celdas mantengan el mismo ancho
+    for (let k = row.length; k < POR_FILA; k++) { const sp = document.createElement('div'); sp.className = 'g-spacer'; r.appendChild(sp); }
     grid.appendChild(r);
   });
   g.appendChild(grid); return g;
@@ -380,10 +401,13 @@ function mkG() {
     wrap.appendChild(r);
   });
 
-  // Individual cells row (121, 122, 123)
-  const ir = document.createElement('div'); ir.className = 'g-row';
-  G_INDIV.forEach(n => ir.appendChild(mkCell(String(n).padStart(3,'0'), false)));
-  wrap.appendChild(ir);
+  // Posiciones menores a 200 con finger G, como celdas propias (filas de 3)
+  enFilas(G_INDIV, 3, false).forEach(row => {
+    const ir = document.createElement('div'); ir.className = 'g-row';
+    row.forEach(n => ir.appendChild(mkCell(String(n).padStart(3,'0'), false)));
+    for (let k = row.length; k < 3; k++) { const sp = document.createElement('div'); sp.className = 'g-spacer'; ir.appendChild(sp); }
+    wrap.appendChild(ir);
+  });
 
   g.appendChild(wrap); return g;
 }
@@ -455,13 +479,14 @@ function buildControls() {
 }
 
 function buildSeriesMap() {
-  // Map each series base (200,300,…,900) to its member nomenclaturas
-  [200,300,400,500,600,700,900].forEach(base => {
-    seriesMap[base] = allFeats
-      .filter(f => { const n=parseInt(f.properties.nomenclatura); return n>=base && n<base+100; })
-      .map(f => f.properties.nomenclatura)
-      .sort();
+  // Cada serie (centena) que existe en el geojson → sus nomenclaturas (finger G, desde 200)
+  allFeats.forEach(f => {
+    const p = f.properties;
+    if (!esSerie(p)) return;
+    const base = Math.floor(numNom(p) / 100) * 100;
+    (seriesMap[base] = seriesMap[base] || []).push(p.nomenclatura);
   });
+  Object.keys(seriesMap).forEach(b => seriesMap[b].sort());
 }
 
 function highlightSeries(members) {
@@ -714,7 +739,7 @@ fetch(GEOJSON).then(r=>r.json()).then(data=>{
   document.getElementById('sorter-title').textContent = `Sorter Loop — ${station}`;
   document.getElementById('sorter-meta').textContent  = `${GEOJSON.split('/').pop()} · ${allFeats.length} posiciones`;
   document.getElementById('total-badge').textContent  = `${allFeats.length} total`;
-  buildSeriesMap(); buildControls(); render();
+  buildSeriesMap(); buildLayout(); buildControls(); render();
   refreshProviderSummary();
 });
 </script>
