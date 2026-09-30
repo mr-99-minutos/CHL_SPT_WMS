@@ -95,6 +95,11 @@
     .mapboxgl-popup-content { color: #111 !important; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; padding: 14px 16px; border-radius: 8px; box-shadow: 0 4px 18px rgba(0,0,0,.25); }
     .mapboxgl-popup-content strong { color: #111 !important; }
     .mapboxgl-popup-close-button { color: #444 !important; font-size: 18px; }
+    .pols-cn { display: inline; }
+    .pols-cn summary { display: inline-block; cursor: pointer; font-size: 11px; color: #1565c0; border: 1px solid #90caf9; border-radius: 10px; padding: 1px 8px; margin: 2px 0; user-select: none; }
+    .pols-cn summary::-webkit-details-marker { display: none; }
+    .pols-cn[open] summary { background: #e3f2fd; }
+    .pols-cn > div { font-size: 11px; color: #444; max-height: 110px; overflow-y: auto; margin: 4px 0 2px; line-height: 1.45; }
 
     /* Tooltip */
     #tt { position: fixed; background: #1e1e2e; color: #eee; padding: 8px 12px; border-radius: 7px; font-size: 11px; pointer-events: none; display: none; z-index: 999; border: 1px solid #444; box-shadow: 0 4px 18px rgba(0,0,0,.6); min-width: 160px; }
@@ -657,17 +662,24 @@ function initMap() {
     mapGL.on('click','spt-fill', e => {
       const p=e.features[0].properties; const c=pColor(p.proveedor);
       const fondo = (p.color_etiqueta===1||p.color_etiqueta==='1') ? 'Negro' : 'Blanco';
-      const pols  = p.poligonos ? p.poligonos.split(';').join(', ') : '—';
-      const com   = p.COMUNA    ? p.COMUNA.split(';').join(', ')    : '—';
-      const reg   = p.REGION    ? p.REGION.split(';').join(', ')    : '—';
+      const lista = v => (v && v !== 'null') ? String(v).split(/[;,]/).map(s => s.trim()).filter(Boolean) : [];
+      const pols  = lista(p.Poligonos_CN || p.poligonos);
+      const com   = lista(p.COMUNA).join(', ') || '—';
+      const reg   = lista(p.REGION).join(', ') || '—';
+      const cont  = lista(p.contenedores_wms).join(', ') || '—';
+      // Códigos de Cobertura Nacional del grupo: plegados en un botón para no alargar el popup
+      const polsHtml = pols.length
+        ? `<details class="pols-cn"><summary>Ver ${pols.length} ${pols.length === 1 ? 'polígono' : 'polígonos'}</summary><div>${pols.join(', ')}</div></details>`
+        : '<span style="font-size:11px;color:#444">—</span>';
       new mapboxgl.Popup({maxWidth:'320px'}).setLngLat(e.lngLat).setHTML(`
         <strong style="color:${c};font-size:14px">${p.zonificacion}</strong><br>
         <b>Finger:</b> ${p.finger} &nbsp; <b>Fondo:</b> ${fondo}<br>
         <b>Proveedor:</b> ${p.proveedor}<br>
         <b>Estación:</b> ${p.station}<br>
         <b>Capacidad:</b> ${p.capacity}<br>
+        <b>Contenedores:</b> ${cont}<br>
         <hr style="border:none;border-top:1px solid #ddd;margin:6px 0">
-        <b>Polígonos:</b> <span style="font-size:11px;color:#444">${pols}</span><br>
+        <div><b>Polígonos CN:</b> ${polsHtml}</div>
         <b>Comuna(s):</b> <span style="font-size:11px;color:#444">${com}</span><br>
         <b>Región:</b> <span style="font-size:11px;color:#444">${reg}</span>
       `).addTo(mapGL);
